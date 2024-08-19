@@ -18,21 +18,25 @@ headers = {
 
 
 def get_children_blocks(block_id):
+    """ Retrieve all children of a given block id from Notion. """
     url = f"https://api.notion.com/v1/blocks/{block_id}/children"
     response = requests.get(url, headers=headers)
     response.raise_for_status()
     return response.json()["results"]
 
 
-def get_shopping_items(page_id):
+def get_shopping_items(page_id, old_items):
+    """ Retrieve all shopping items from Bring API for a given page. Add only new items. """
     blocks = get_children_blocks(page_id)
     items = []
     for block in blocks:
         if block["type"] == "bulleted_list_item":
             item = block['bulleted_list_item']['rich_text'][0]['plain_text']
-            items.append(item)
+            if item.lower() not in old_items:
+                items.append(item)
 
     return items
+
 
 if __name__ == "__main__":
     # Create Bring instance with email and password
@@ -42,21 +46,27 @@ if __name__ == "__main__":
     # Get information about all available shopping lists
     shopping_list = bring.loadLists()["lists"][2]
 
-    items = get_shopping_items(BRING_SHOPPING_LIST)
+    # Retrieve existing items from Bring
+    old_items = list(
+        map(
+            lambda x: f"{x['name']}{', ' + x['specification'] if x['specification'] != '' else ''}".lower(),
+            bring.getItems(shopping_list['listUuid'])['purchase']
+        )
+    )
 
-    for item in items:
-        item_info = item.split(', ')
-        name = item_info[0]
-        if len(item_info) == 2:
-            specification = item_info[1]
-            bring.saveItem(shopping_list['listUuid'], name, specification)
-        else:
-            bring.saveItem(shopping_list['listUuid'], name)
+    # Retrieve new items from Notion
+    new_items = get_shopping_items(BRING_SHOPPING_LIST, old_items)
 
-
-    # Get all the items of a list
-    # items = bring.getItems(shopping_list['listUuid'])
-    # todo_items = items["purchase"]
-    # recent_items = items['recently']
-
-    print("Successfully updated shopping list!")
+    if new_items:
+        # Add new items to shopping list
+        for item in new_items:
+            item_info = item.split(', ')
+            name = item_info[0]
+            if len(item_info) == 2:
+                specification = item_info[1]
+                bring.saveItem(shopping_list['listUuid'], name, specification)
+            else:
+                bring.saveItem(shopping_list['listUuid'], name)
+        print("Successfully updated shopping list!")
+    else:
+        print("No new items found!")
