@@ -1,4 +1,3 @@
 requests
 python-bring-api
-os
 load_dotenv
