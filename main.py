@@ -25,17 +25,30 @@ def get_children_blocks(block_id):
     return response.json()["results"]
 
 
-def get_shopping_items(page_id, old_items):
+def clear_page(block_id, children_ids):
+    """ Clear given Notion page. """
+    print("Clearing page...")
+    for child_id in children_ids:
+        url = f"https://api.notion.com/v1/blocks/{child_id}"
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+
+    print("Successfully cleared the Notion page.")
+
+def get_shopping_items(page_id, existing_items):
     """ Retrieve all shopping items from Bring API for a given page. Add only new items. """
+
     blocks = get_children_blocks(page_id)
     items = []
+    block_ids = []
     for block in blocks:
+        block_ids.append(block["id"])
         if block["type"] == "bulleted_list_item":
             item = block['bulleted_list_item']['rich_text'][0]['plain_text']
-            if item.lower() not in old_items:
+            if item.lower() not in existing_items:
                 items.append(item)
 
-    return items
+    return items, block_ids
 
 
 if __name__ == "__main__":
@@ -47,7 +60,7 @@ if __name__ == "__main__":
     shopping_list = bring.loadLists()["lists"][2]
 
     # Retrieve existing items from Bring
-    old_items = list(
+    existing_items = list(
         map(
             lambda x: f"{x['name']}{', ' + x['specification'] if x['specification'] != '' else ''}".lower(),
             bring.getItems(shopping_list['listUuid'])['purchase']
@@ -55,7 +68,8 @@ if __name__ == "__main__":
     )
 
     # Retrieve new items from Notion
-    new_items = get_shopping_items(BRING_SHOPPING_LIST, old_items)
+    new_items, block_ids = get_shopping_items(BRING_SHOPPING_LIST, existing_items)
+    clear_page(BRING_SHOPPING_LIST, block_ids)
 
     if new_items:
         # Add new items to shopping list
@@ -67,6 +81,10 @@ if __name__ == "__main__":
                 bring.saveItem(shopping_list['listUuid'], name, specification)
             else:
                 bring.saveItem(shopping_list['listUuid'], name)
+
         print("Successfully updated shopping list!")
+
+        # When all items have been added, clear notion page
+        clear_page(BRING_SHOPPING_LIST, block_ids)
     else:
         print("No new items found!")
